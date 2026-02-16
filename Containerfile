@@ -31,9 +31,11 @@ RUN pip install --no-cache-dir \
 RUN FLAGS_use_mkldnn=0 FLAGS_enable_pir_api=0 FLAGS_enable_pir_in_executor=0 \
     python -c "from paddleocr import PaddleOCR; PaddleOCR(use_textline_orientation=True, lang='en', ocr_version='PP-OCRv5')"
 
-RUN ls
+#RUN ls
 COPY ocr_service.py .
 
-EXPOSE 8000
+ENV BEANBEAVER_OCR_INTERNAL_PORT=8000
 
-CMD ["uvicorn", "ocr_service:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE ${BEANBEAVER_OCR_INTERNAL_PORT}
+
+CMD ["sh", "-c", "uvicorn ocr_service:app --host 0.0.0.0 --port ${BEANBEAVER_OCR_INTERNAL_PORT}"]

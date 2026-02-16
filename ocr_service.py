@@ -2,6 +2,7 @@
 
 import io
 import logging
+import os
 
 import numpy as np
 from fastapi import FastAPI, File, UploadFile
@@ -13,6 +14,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Receipt OCR Service")
+# Default container-internal service port (Containerfile CMD uses this).
+DEFAULT_INTERNAL_PORT = int(os.getenv("BEANBEAVER_OCR_INTERNAL_PORT", "8000"))
 
 # Load model once at startup
 logger.info("Loading PaddleOCR model...")
@@ -102,4 +105,8 @@ async def perform_ocr(file: UploadFile = File(...)):
 @app.get("/health")
 async def health():
     """Health check endpoint."""
-    return {"status": "ok", "model": "paddleocr"}
+    return {
+        "status": "ok",
+        "model": "paddleocr",
+        "internal_port": DEFAULT_INTERNAL_PORT,
+    }
