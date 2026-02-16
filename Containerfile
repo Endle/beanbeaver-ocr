@@ -34,8 +34,6 @@ RUN FLAGS_use_mkldnn=0 FLAGS_enable_pir_api=0 FLAGS_enable_pir_in_executor=0 \
 #RUN ls
 COPY ocr_service.py .
 
-ENV BEANBEAVER_OCR_INTERNAL_PORT=8000
+EXPOSE 8000
 
-EXPOSE ${BEANBEAVER_OCR_INTERNAL_PORT}
-
-CMD ["sh", "-c", "uvicorn ocr_service:app --host 0.0.0.0 --port ${BEANBEAVER_OCR_INTERNAL_PORT}"]
+CMD ["sh", "-ec", "PORT=${BEANBEAVER_OCR_INTERNAL_PORT:-8000}; exec uvicorn ocr_service:app --host 0.0.0.0 --port \"${PORT}\""]

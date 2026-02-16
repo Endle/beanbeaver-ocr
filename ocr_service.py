@@ -2,7 +2,7 @@
 
 import io
 import logging
-import os
+import sys
 
 import numpy as np
 from fastapi import FastAPI, File, UploadFile
@@ -14,8 +14,34 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Receipt OCR Service")
-# Default container-internal service port (Containerfile CMD uses this).
-DEFAULT_INTERNAL_PORT = int(os.getenv("BEANBEAVER_OCR_INTERNAL_PORT", "8000"))
+
+
+def _parse_required_port_arg(argv: list[str]) -> int:
+    """Require explicit --port argument when service starts."""
+    for idx, arg in enumerate(argv):
+        if arg == "--port":
+            if idx + 1 >= len(argv):
+                raise RuntimeError("Missing value for required '--port' argument.")
+            try:
+                return int(argv[idx + 1])
+            except ValueError as exc:
+                raise RuntimeError(
+                    "Invalid '--port' value. Expected an integer."
+                ) from exc
+        if arg.startswith("--port="):
+            raw_value = arg.split("=", 1)[1]
+            try:
+                return int(raw_value)
+            except ValueError as exc:
+                raise RuntimeError(
+                    "Invalid '--port' value. Expected an integer."
+                ) from exc
+    raise RuntimeError(
+        "ocr_service requires explicit '--port <number>' in the startup command."
+    )
+
+
+SERVER_PORT = _parse_required_port_arg(sys.argv)
 
 # Load model once at startup
 logger.info("Loading PaddleOCR model...")
@@ -108,5 +134,5 @@ async def health():
     return {
         "status": "ok",
         "model": "paddleocr",
-        "internal_port": DEFAULT_INTERNAL_PORT,
+        "internal_port": SERVER_PORT,
     }
