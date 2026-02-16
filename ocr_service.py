@@ -2,6 +2,7 @@
 
 import io
 import logging
+import sys
 
 import numpy as np
 from fastapi import FastAPI, File, UploadFile
@@ -13,6 +14,34 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Receipt OCR Service")
+
+
+def _parse_required_port_arg(argv: list[str]) -> int:
+    """Require explicit --port argument when service starts."""
+    for idx, arg in enumerate(argv):
+        if arg == "--port":
+            if idx + 1 >= len(argv):
+                raise RuntimeError("Missing value for required '--port' argument.")
+            try:
+                return int(argv[idx + 1])
+            except ValueError as exc:
+                raise RuntimeError(
+                    "Invalid '--port' value. Expected an integer."
+                ) from exc
+        if arg.startswith("--port="):
+            raw_value = arg.split("=", 1)[1]
+            try:
+                return int(raw_value)
+            except ValueError as exc:
+                raise RuntimeError(
+                    "Invalid '--port' value. Expected an integer."
+                ) from exc
+    raise RuntimeError(
+        "ocr_service requires explicit '--port <number>' in the startup command."
+    )
+
+
+SERVER_PORT = _parse_required_port_arg(sys.argv)
 
 # Load model once at startup
 logger.info("Loading PaddleOCR model...")
@@ -102,4 +131,8 @@ async def perform_ocr(file: UploadFile = File(...)):
 @app.get("/health")
 async def health():
     """Health check endpoint."""
-    return {"status": "ok", "model": "paddleocr"}
+    return {
+        "status": "ok",
+        "model": "paddleocr",
+        "internal_port": SERVER_PORT,
+    }

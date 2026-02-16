@@ -3,9 +3,10 @@ name: Docker
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["main", "master"]
   pull_request:
-    branches: [ "master" ]
+    branches: ["main", "master"]
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -27,9 +28,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Prepare
-        run: cp Containerfile Dockerfile
         
       # Install the cosign tool except on PR
       # https://github.com/sigstore/cosign-installer
@@ -70,6 +68,7 @@ jobs:
         uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
         with:
           context: .
+          file: Containerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
