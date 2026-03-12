@@ -18,6 +18,7 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
@@ -63,6 +64,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long,prefix=sha-
 
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
@@ -72,6 +74,7 @@ jobs:
         with:
           context: .
           file: Containerfile
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -92,3 +95,102 @@ jobs:
         # This step uses the identity token to provision an ephemeral certificate
         # against the sigstore community Fulcio instance.
         run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+
+  test-linux:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify published manifest platforms
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+        run: |
+          docker buildx imagetools inspect "$IMAGE_REF"
+
+      - name: Start published OCR service
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+        run: |
+          docker run -d --rm \
+            --name beanbeaver-ocr-linux \
+            -e BEANBEAVER_OCR_INTERNAL_PORT=8000 \
+            -p 8000:8000 \
+            "$IMAGE_REF"
+
+      - name: Wait for health endpoint
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8000/health > /tmp/ocr-health.json; then
+              cat /tmp/ocr-health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs beanbeaver-ocr-linux
+          exit 1
+
+      - name: Stop OCR service
+        if: always()
+        run: docker rm -f beanbeaver-ocr-linux
+
+  test-macos-self-hosted:
+    if: github.event_name != 'pull_request' && vars.ENABLE_MACOS_DOCKER_SMOKE_TEST == 'true'
+    needs: build
+    # GitHub-hosted macOS runners are not a reliable place to run Docker. Use a
+    # self-hosted Apple Silicon runner with Docker Desktop, Colima, or Podman.
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull published OCR image
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+        run: docker pull "$IMAGE_REF"
+
+      - name: Start published OCR service
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+        run: |
+          docker run -d --rm \
+            --name beanbeaver-ocr-macos \
+            -e BEANBEAVER_OCR_INTERNAL_PORT=8000 \
+            -p 8000:8000 \
+            "$IMAGE_REF"
+
+      - name: Wait for health endpoint
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8000/health > /tmp/ocr-health.json; then
+              cat /tmp/ocr-health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs beanbeaver-ocr-macos
+          exit 1
+
+      - name: Stop OCR service
+        if: always()
+        run: docker rm -f beanbeaver-ocr-macos

@@ -32,3 +32,38 @@ jobs:
 
       - name: Validate container file exists
         run: test -f Containerfile
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build container image
+        run: docker build -f Containerfile -t beanbeaver-ocr:ci .
+
+      - name: Start OCR service
+        run: |
+          docker run -d --rm \
+            --name beanbeaver-ocr-ci \
+            -e BEANBEAVER_OCR_INTERNAL_PORT=8000 \
+            -p 8000:8000 \
+            beanbeaver-ocr:ci
+
+      - name: Wait for health endpoint
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8000/health > /tmp/ocr-health.json; then
+              cat /tmp/ocr-health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs beanbeaver-ocr-ci
+          exit 1
+
+      - name: Stop OCR service
+        if: always()
+        run: docker rm -f beanbeaver-ocr-ci
